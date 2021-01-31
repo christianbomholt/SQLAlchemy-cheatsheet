@@ -339,6 +339,29 @@ session\
 
 
 ```python
+session\
+    .query(
+        func.sum(Movie.name)
+    ).all()
+
+
+session\
+    .query(func.sum(Item.nominal))\
+    .filter(Item.mod.in_ (selected_mods))\
+    .group_by(Item.item_type)\
+    .all()
+
+```
+
+
+
+
+    [(0.0)]
+
+
+
+
+```python
 from sqlalchemy import func
 
 result = session\
@@ -707,33 +730,321 @@ session.query(Movie).filter(and_(Movie.year>2007, Movie.name.like('The Dark%')))
 
 
 ```python
+from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import scoped_session,sessionmaker
-from zope.sqlalchemy import ZopeTransactionExtension
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Boolean,
-    ForeignKey,
-    DateTime,
-    Sequence,
-    Float
-)
-import datetime
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import random
 
-DBSession = scoped_session(sessionmaker(extension=ZopeTransactionExtension()))
 Base = declarative_base()
 
-class Book(Base):  #<------------------------- 
-    __tablename__  = "books"    #matches the name of the actual database table
-    id             = Column(Integer,Sequence('book_seq'),primary_key=True) # plays nice with all major database engines
-    name           = Column(String(50))                                    # string column need lengths
-    author_id      = Column(Integer,ForeignKey('authors.id'))              # assumes there is a table in the database called 'authors' that has an 'id' column
-    price          = Column(Float)
-    date_added     = Column(DateTime, default=datetime.datetime.now)       # defaults can be specified as functions
-    promote        = Column(Boolean,default=False) 
+class Item(Base):
+    __tablename__ = 'items'
+    id = Column(Integer, primary_key=True)
+    name =  Column(String(50),unique=True)
+    nominal  =  Column(Integer)
+    rarity =  Column(String(50))
+    
+    def __repr__(self):
+        return f"Item(name={self.name}, nominal={self.nominal}, rarity={self.rarity})"
+
+
+class LinkAttachments(Base):
+    __tablename__ = "link_attachments"
+    id = Column(Integer, primary_key=True)
+    itemname = Column(String)
+    attachname = Column(String)
+    
+    def __repr__(self):
+        return f"Link(itemname={self.itemname}, attachname={self.attachname})"
+
+class LinkMags(Base):
+    __tablename__ = "link_mags"
+    id = Column(Integer, primary_key=True)
+    itemname = Column(String)
+    magname = Column(String)    
+    
+class LinkBullets(Base):
+    __tablename__ = "link_bullets"
+    id = Column(Integer, primary_key=True)
+    itemname = Column(String)
+    bulletname = Column(String)
+    
+class Attachments(Base):
+    __tablename__ = "attachments"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    
+    def __repr__(self):
+        return f"Attach(name={self.name})"
+
+class Bullets(Base):
+    __tablename__ = "bullets"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    bulletcount = Column(Integer, default=7)
+    
+    def __repr__(self):
+        return f"Mag(name={self.name}, bullet_count={self.bulletcount})"
+
+class Magazines(Base):
+    __tablename__ = "magazines"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    magbulletcount = Column(Integer, default=30)
+    
+    def __repr__(self):
+        return f"Mag(name={self.name}, bullets_in_mag={self.magbulletcount})"
+
+    
+engine = create_engine('sqlite:///:memory:')
+
+Base.metadata.create_all(engine)
+
+Session = sessionmaker(bind=engine)
+
+session = Session()
 ```
+
+
+```python
+import json
+
+with open('DumpAttatch.json', 'r') as myfile:
+    data=myfile.read()
+    
+attachments = json.loads(data)["HlyngeWeapons"]
+```
+
+### Lets load in the items to have some baseline data
+
+
+```python
+for item in attachments:
+    item_name = item.get("name")
+    exists = session.query(Item).filter_by(name=item_name).first()
+    if not exists:
+        item_obj = Item(name = item_name, nominal = random.randint(1, 300), rarity = "Common")
+        session.add(item_obj)
+    
+session.commit()
+```
+
+
+```python
+session.query(Item).limit(5).all()
+```
+
+
+
+
+    [Item(name=access, nominal=58, rarity=Common),
+     Item(name=Weapon_Base, nominal=265, rarity=Common),
+     Item(name=DefaultWeapon, nominal=259, rarity=Common),
+     Item(name=PistolCore, nominal=248, rarity=Common),
+     Item(name=RifleCore, nominal=249, rarity=Common)]
+
+
+
+
+```python
+attachments[100]
+```
+
+
+
+
+    {'name': 'LAW', 'attachments': [], 'bullets': ['Ammo_LAW_HE'], 'magazines': []}
+
+
+
+### Next we load in the appropriate attachments
+
+
+```python
+for item in attachments:
+    item_name = item.get("name")
+    for attach in item.get("attachments"):
+        
+        exists = session.query(Attachments).filter_by(name=attach).first()
+        if not exists:
+            item_obj = Attachments(name = attach)
+            session.add(item_obj)
+        
+        exists = session.query(LinkAttachments).filter_by(attachname=attach, itemname=item_name).first()
+        if not exists:
+            item_obj = LinkAttachments(attachname=attach, itemname=item_name)
+            session.add(item_obj)
+
+session.commit()     
+```
+
+
+```python
+session.query(Attachments).limit(5).all()
+```
+
+
+
+
+    [Attach(name=FNP45_MRDSOptic),
+     Attach(name=Crossbow_RedpointOptic),
+     Attach(name=PistolOptic),
+     Attach(name=AK_WoodBttstck),
+     Attach(name=AK_WoodBttstck_Black)]
+
+
+
+
+```python
+session.query(LinkAttachments).limit(5).all()
+```
+
+
+
+
+    [Link(itemname=Crossbow, attachname=FNP45_MRDSOptic),
+     Link(itemname=Crossbow, attachname=Crossbow_RedpointOptic),
+     Link(itemname=Crossbow, attachname=PistolOptic),
+     Link(itemname=AK101, attachname=AK_WoodBttstck),
+     Link(itemname=AK101, attachname=AK_WoodBttstck_Black)]
+
+
+
+### An example of how to get all attachments for a specific item
+
+
+```python
+session.query(
+         Item, Attachments,
+    ).filter(
+         Item.name == "Crossbow",
+    ).filter(
+        Item.name == LinkAttachments.itemname
+    ).filter(
+        LinkAttachments.attachname == Attachments.name
+    ).all()
+```
+
+
+
+
+    [(Item(name=Crossbow, nominal=188, rarity=Common),
+      Attach(name=FNP45_MRDSOptic)),
+     (Item(name=Crossbow, nominal=188, rarity=Common),
+      Attach(name=Crossbow_RedpointOptic)),
+     (Item(name=Crossbow, nominal=188, rarity=Common), Attach(name=PistolOptic))]
+
+
+
+#### Or simpler if we dont need the item
+
+
+```python
+session.query(
+         Attachments,
+    ).filter(
+         Item.name == "Crossbow",
+    ).filter(
+        Item.name == LinkAttachments.itemname
+    ).filter(
+        LinkAttachments.attachname == Attachments.name
+    ).all()
+```
+
+
+
+
+    [Attach(name=FNP45_MRDSOptic),
+     Attach(name=Crossbow_RedpointOptic),
+     Attach(name=PistolOptic)]
+
+
+
+### Adding magazines
+
+
+```python
+for item in attachments:
+    item_name = item.get("name")
+    for bullet in item.get("bullets"):
+        
+        exists = session.query(Bullets).filter_by(name=bullet).first()
+        if not exists:
+            item_obj = Bullets(name = bullet)
+            session.add(item_obj)
+        
+        exists = session.query(LinkBullets).filter_by(bulletname=bullet, itemname=item_name).first()
+        if not exists:
+            item_obj = LinkBullets(bulletname=bullet, itemname=item_name)
+            session.add(item_obj)
+
+session.commit()
+```
+
+
+```python
+session.query(
+         Magazines,
+    ).filter(
+         Item.name == "AK101",
+    ).filter(
+        Item.name == LinkMags.itemname
+    ).filter(
+        LinkMags.magname == Magazines.name
+    ).all()
+```
+
+
+
+
+    [Mag(name=Mag_AK101_30Rnd, bullets_in_mag=30),
+     Mag(name=Mag_AK101_30Rnd_Black, bullets_in_mag=30),
+     Mag(name=Mag_AK101_30Rnd_Green, bullets_in_mag=30)]
+
+
+
+### Adding bullets
+
+
+```python
+for item in attachments:
+    item_name = item.get("name")
+    for mag in item.get("magazines"):
+        
+        exists = session.query(Magazines).filter_by(name=mag).first()
+        if not exists:
+            item_obj = Magazines(name = mag)
+            session.add(item_obj)
+        
+        exists = session.query(LinkMags).filter_by(magname=mag, itemname=item_name).first()
+        if not exists:
+            item_obj = LinkMags(magname=mag, itemname=item_name)
+            session.add(item_obj)
+
+session.commit()
+```
+
+
+```python
+session.query(
+         Bullets,
+    ).filter(
+         Item.name == "AK101",
+    ).filter(
+        Item.name == LinkBullets.itemname
+    ).filter(
+        LinkBullets.bulletname == Bullets.name
+    ).all()
+```
+
+
+
+
+    [Mag(name=Ammo_556x45, bullet_count=7),
+     Mag(name=Ammo_556x45Tracer, bullet_count=7)]
+
+
 
 ## Engine connection string
 
