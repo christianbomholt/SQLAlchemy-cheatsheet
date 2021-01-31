@@ -728,6 +728,8 @@ session.query(Movie).filter(and_(Movie.year>2007, Movie.name.like('The Dark%')))
 
 ## More complex data models
 
+<img src="erd.png">
+
 
 ```python
 from sqlalchemy import Column, Integer, String
@@ -769,6 +771,12 @@ class LinkBullets(Base):
     id = Column(Integer, primary_key=True)
     itemname = Column(String)
     bulletname = Column(String)
+
+class LinkBulletMag(Base):
+    __tablename__ = "link_bullet_to_mags"
+    id = Column(Integer, primary_key=True)
+    magname = Column(String)
+    bulletname = Column(String)
     
 class Attachments(Base):
     __tablename__ = "attachments"
@@ -785,7 +793,7 @@ class Bullets(Base):
     bulletcount = Column(Integer, default=7)
     
     def __repr__(self):
-        return f"Mag(name={self.name}, bullet_count={self.bulletcount})"
+        return f"Bullet(name={self.name}, bullet_count={self.bulletcount})"
 
 class Magazines(Base):
     __tablename__ = "magazines"
@@ -838,11 +846,11 @@ session.query(Item).limit(5).all()
 
 
 
-    [Item(name=access, nominal=58, rarity=Common),
-     Item(name=Weapon_Base, nominal=265, rarity=Common),
-     Item(name=DefaultWeapon, nominal=259, rarity=Common),
-     Item(name=PistolCore, nominal=248, rarity=Common),
-     Item(name=RifleCore, nominal=249, rarity=Common)]
+    [Item(name=access, nominal=237, rarity=Common),
+     Item(name=Weapon_Base, nominal=49, rarity=Common),
+     Item(name=DefaultWeapon, nominal=192, rarity=Common),
+     Item(name=PistolCore, nominal=293, rarity=Common),
+     Item(name=RifleCore, nominal=29, rarity=Common)]
 
 
 
@@ -929,11 +937,11 @@ session.query(
 
 
 
-    [(Item(name=Crossbow, nominal=188, rarity=Common),
+    [(Item(name=Crossbow, nominal=47, rarity=Common),
       Attach(name=FNP45_MRDSOptic)),
-     (Item(name=Crossbow, nominal=188, rarity=Common),
+     (Item(name=Crossbow, nominal=47, rarity=Common),
       Attach(name=Crossbow_RedpointOptic)),
-     (Item(name=Crossbow, nominal=188, rarity=Common), Attach(name=PistolOptic))]
+     (Item(name=Crossbow, nominal=47, rarity=Common), Attach(name=PistolOptic))]
 
 
 
@@ -967,16 +975,16 @@ session.query(
 ```python
 for item in attachments:
     item_name = item.get("name")
-    for bullet in item.get("bullets"):
+    for mag in item.get("magazines"):
         
-        exists = session.query(Bullets).filter_by(name=bullet).first()
+        exists = session.query(Magazines).filter_by(name=mag).first()
         if not exists:
-            item_obj = Bullets(name = bullet)
+            item_obj = Magazines(name = mag)
             session.add(item_obj)
         
-        exists = session.query(LinkBullets).filter_by(bulletname=bullet, itemname=item_name).first()
+        exists = session.query(LinkMags).filter_by(magname=mag, itemname=item_name).first()
         if not exists:
-            item_obj = LinkBullets(bulletname=bullet, itemname=item_name)
+            item_obj = LinkMags(magname=mag, itemname=item_name)
             session.add(item_obj)
 
 session.commit()
@@ -1010,18 +1018,24 @@ session.query(
 ```python
 for item in attachments:
     item_name = item.get("name")
-    for mag in item.get("magazines"):
+    for bullet in item.get("bullets"):
         
-        exists = session.query(Magazines).filter_by(name=mag).first()
+        exists = session.query(Bullets).filter_by(name=bullet).first()
         if not exists:
-            item_obj = Magazines(name = mag)
+            item_obj = Bullets(name = bullet)
             session.add(item_obj)
         
-        exists = session.query(LinkMags).filter_by(magname=mag, itemname=item_name).first()
+        exists = session.query(LinkBullets).filter_by(bulletname=bullet, itemname=item_name).first()
         if not exists:
-            item_obj = LinkMags(magname=mag, itemname=item_name)
+            item_obj = LinkBullets(bulletname=bullet, itemname=item_name)
             session.add(item_obj)
-
+            
+        for mag in item.get("magazines"):
+            exists = session.query(LinkBulletMag).filter_by(bulletname=bullet, magname=mag).first()
+            if not exists:
+                item_obj = LinkBulletMag(bulletname=bullet, magname=mag)
+                session.add(item_obj)
+            
 session.commit()
 ```
 
@@ -1041,8 +1055,70 @@ session.query(
 
 
 
-    [Mag(name=Ammo_556x45, bullet_count=7),
-     Mag(name=Ammo_556x45Tracer, bullet_count=7)]
+    [Bullet(name=Ammo_556x45, bullet_count=7),
+     Bullet(name=Ammo_556x45Tracer, bullet_count=7)]
+
+
+
+### Querying which mags fits the bullets 
+
+
+```python
+session.query(
+         Magazines
+    ).filter(
+         Bullets.name == "Ammo_556x45",
+    ).filter(
+        Bullets.name == LinkBulletMag.bulletname
+    ).filter(
+        LinkBulletMag.magname == Magazines.name
+    ).all()
+```
+
+
+
+
+    [Mag(name=Mag_AK101_30Rnd, bullets_in_mag=30),
+     Mag(name=Mag_AK101_30Rnd_Black, bullets_in_mag=30),
+     Mag(name=Mag_AK101_30Rnd_Green, bullets_in_mag=30),
+     Mag(name=Mag_STANAG_30Rnd, bullets_in_mag=30),
+     Mag(name=Mag_STANAGCoupled_30Rnd, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_10Rnd, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_20Rnd, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_30Rnd, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_40Rnd, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_10Rnd_Green, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_20Rnd_Green, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_30Rnd_Green, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_40Rnd_Green, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_10Rnd_Black, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_20Rnd_Black, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_30Rnd_Black, bullets_in_mag=30),
+     Mag(name=Mag_CMAG_40Rnd_Black, bullets_in_mag=30),
+     Mag(name=Mag_M249_Box200Rnd, bullets_in_mag=30)]
+
+
+
+And the converse...
+
+
+```python
+session.query(
+         Bullets
+    ).filter(
+         Magazines.name == "Mag_M249_Box200Rnd",
+    ).filter(
+        Magazines.name == LinkBulletMag.magname
+    ).filter(
+        LinkBulletMag.bulletname == Bullets.name
+    ).all()
+```
+
+
+
+
+    [Bullet(name=Ammo_556x45, bullet_count=7),
+     Bullet(name=Ammo_556x45Tracer, bullet_count=7)]
 
 
 
